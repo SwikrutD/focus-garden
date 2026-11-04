@@ -4,7 +4,9 @@ A focus timer that grows a garden. Each finished session plants a flower labelle
 worked on, so over a day the garden fills in with what you got done. Rain and soft music play
 while the timer runs, all synthesized in the browser.
 
-It's a single `index.html` with no dependencies. Open it in any modern browser.
+**Use it:** https://swikrut.com/focus-garden/
+
+It's a single `index.html` with no dependencies, so you can also download it and open it in any modern browser.
 
 | Key | Action |
 |---|---|
