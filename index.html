@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Focus Garden</title>
+<style>
+  :root{--glass:rgba(255,255,255,.10);--line:rgba(255,255,255,.20);--ink:#f6f2ea;--muted:rgba(246,242,234,.62);--accent:#ffd27a;--accent-ink:#2b1d05}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b1026;color:var(--ink);font-family:"Segoe UI Variable Display","Segoe UI",ui-rounded,system-ui,sans-serif}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .panel{position:fixed;top:4vh;left:50%;transform:translateX(-50%);width:min(420px,calc(100% - 32px));padding:20px 22px 16px;border-radius:26px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px);text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.28)}
+  .modes{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+  .chip{border:1px solid var(--line);background:transparent;color:var(--muted);padding:6px 12px;border-radius:999px;font:inherit;font-size:13px;cursor:pointer;transition:.2s}
+  .chip:hover{color:var(--ink)}
+  .chip.on{background:rgba(255,255,255,.18);color:var(--ink);border-color:transparent}
+  .time{font-size:clamp(68px,17vw,104px);font-weight:600;letter-spacing:-3px;font-variant-numeric:tabular-nums;line-height:1;margin:14px 0 4px;text-shadow:0 4px 30px rgba(0,0,0,.25)}
+  .dots{display:flex;gap:7px;justify-content:center;margin-bottom:12px}
+  .dots i{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.22)}
+  .dots i.on{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  input[type=text]{width:100%;background:rgba(0,0,0,.18);border:1px solid var(--line);color:var(--ink);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;text-align:center;outline:none}
+  input[type=text]:focus{border-color:rgba(255,255,255,.45)}
+  input::placeholder{color:var(--muted)}
+  .row{display:flex;gap:8px;justify-content:center;align-items:center;margin-top:12px}
+  .btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:var(--ink);padding:10px 16px;border-radius:14px;font:inherit;font-size:14px;cursor:pointer;transition:.15s}
+  .btn:hover{background:rgba(255,255,255,.16)}
+  .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:650;min-width:120px}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .tog{padding:7px 11px;font-size:13px;border-radius:11px;opacity:.55}
+  .tog.on{opacity:1;background:rgba(255,255,255,.16)}
+  input[type=range]{accent-color:var(--accent);width:110px}
+  .settings{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+  .settings.open{display:block}
+  .settings label{display:inline-flex;flex-direction:column;gap:4px;margin:0 6px}
+  .settings input[type=number]{width:64px;background:rgba(0,0,0,.2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:6px;font:inherit;text-align:center}
+  .stats{position:fixed;left:16px;bottom:14px;font-size:13px;color:var(--ink);background:rgba(0,0,0,.22);padding:8px 12px;border-radius:12px;backdrop-filter:blur(8px)}
+  .hint{position:fixed;right:16px;bottom:14px;font-size:12px;color:var(--muted);background:rgba(0,0,0,.18);padding:7px 11px;border-radius:12px}
+  .tip{position:fixed;pointer-events:none;background:rgba(10,12,30,.82);border:1px solid var(--line);padding:7px 10px;border-radius:10px;font-size:12px;transform:translate(-50%,-120%);white-space:nowrap;display:none}
+  .toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);background:rgba(10,12,30,.8);border:1px solid var(--line);padding:16px 22px;border-radius:18px;font-size:16px;opacity:0;transition:.4s;pointer-events:none;text-align:center}
+  .toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  @media (max-width:600px){.hint{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="panel">
+  <div class="modes">
+    <button class="chip" data-mode="focus">Focus</button>
+    <button class="chip" data-mode="short">Short break</button>
+    <button class="chip" data-mode="long">Long break</button>
+  </div>
+  <div class="time" id="time">25:00</div>
+  <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
+  <input type="text" id="task" maxlength="60" placeholder="What are you growing right now?">
+  <div class="row">
+    <button class="btn" id="reset" title="Reset (R)">↺</button>
+    <button class="btn primary" id="go">Start</button>
+    <button class="btn" id="skip" title="Skip to next">⏭</button>
+  </div>
+  <div class="row">
+    <button class="btn tog" id="rainT" title="Rain">🌧 Rain</button>
+    <button class="btn tog" id="musicT" title="Ambient music">🎹 Music</button>
+    <input type="range" id="vol" min="0" max="1" step="0.01" title="Volume">
+    <button class="btn tog on" id="gear" title="Settings">⚙</button>
+  </div>
+  <div class="settings" id="settings">
+    <label>Focus<input type="number" id="sFocus" min="1" max="180"></label>
+    <label>Short<input type="number" id="sShort" min="1" max="60"></label>
+    <label>Long<input type="number" id="sLong" min="1" max="90"></label>
+    <div class="row"><button class="btn tog on" id="clear">Clear garden</button></div>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+<div class="hint">Space start/pause · R reset · M mute · hover a flower</div>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const easeOutBack = x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- state ----------
+const settings = Object.assign({ focus: 25, short: 5, long: 15, rain: true, music: true, vol: 0.6 }, store.get('fg.settings', {}));
+let garden = store.get('fg.garden', []);
+const dur = m => settings[m] * 60000;
+const S = Object.assign({ mode: 'focus', running: false, endAt: 0, remaining: dur('focus'), pending: null, count: 0, task: '' }, store.get('fg.state', {}));
+const saveState = () => store.set('fg.state', S);
+const saveGarden = () => store.set('fg.garden', garden);
+const saveSettings = () => store.set('fg.settings', settings);
+const remaining = () => S.running ? Math.max(0, S.endAt - Date.now()) : S.remaining;
+const fmt = ms => { const s = Math.ceil(ms / 1000); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+
+function newPlant() {
+  // pick the spot farthest from existing plants so the garden fills evenly
+  let best = null, bestD = -1;
+  for (let i = 0; i < 16; i++) {
+    const c = { seed: (Math.random() * 2 ** 32) >>> 0, x: 0.03 + Math.random() * 0.94, d: Math.random() };
+    let m = Infinity;
+    for (const p of garden) m = Math.min(m, Math.hypot((p.x - c.x) * 2.5, p.d - c.d));
+    if (m > bestD) { bestD = m; best = c; }
+  }
+  return best;
+}
+
+// ---------- audio ----------
+let AC = null, master, rainGain, musicGain, chimeGain, muted = false;
+const ROOT = 196; // G3
+const CHORDS = [[0, 4, 7, 11, 14], [-3, 0, 4, 7, 11], [5, 9, 12, 16, 19], [2, 5, 9, 12, 17]];
+const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
+const hz = semi => ROOT * Math.pow(2, semi / 12);
+
+function tone(f, t, len, vol, type = 'sine', att = 0.02, dest = musicGain) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.value = f;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t + att);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(g).connect(dest); o.start(t); o.stop(t + len + 0.1);
+}
+
+function ensureAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain(); master.gain.value = settings.vol; master.connect(AC.destination);
+
+  // rain: looping brown-ish noise + random droplets
+  const len = AC.sampleRate * 4, buf = AC.createBuffer(2, len, AC.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c); let last = 0;
+    for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 2.2 + w * 0.06; }
+  }
+  const src = AC.createBufferSource(); src.buffer = buf; src.loop = true;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+  rainGain = AC.createGain(); rainGain.gain.value = settings.rain ? 0.55 : 0;
+  src.connect(lp).connect(rainGain).connect(master); src.start();
+  setInterval(() => {
+    if (!settings.rain || Math.random() > 0.35) return;
+    const t = AC.currentTime + Math.random() * 0.1;
+    tone(1800 + Math.random() * 2600, t, 0.05 + Math.random() * 0.05, 0.03 + Math.random() * 0.04, 'sine', 0.002, rainGain);
+  }, 90);
+
+  // music bus with lowpass + feedback delay
+  musicGain = AC.createGain(); musicGain.gain.value = settings.music ? 0.32 : 0;
+  const mlp = AC.createBiquadFilter(); mlp.type = 'lowpass'; mlp.frequency.value = 1700;
+  const delay = AC.createDelay(2); delay.delayTime.value = 0.45;
+  const fb = AC.createGain(); fb.gain.value = 0.4;
+  musicGain.connect(mlp); mlp.connect(master); mlp.connect(delay); delay.connect(fb).connect(delay); delay.connect(master);
+
+  chimeGain = AC.createGain(); chimeGain.gain.value = 0.5; chimeGain.connect(master); chimeGain.connect(delay);
+
+  let next = AC.currentTime + 0.2, ci = 0;
+  setInterval(() => {
+    while (next < AC.currentTime + 1.5) {
+      if (settings.music) {
+        const ch = CHORDS[ci % CHORDS.length];
+        tone(hz(ch[0] - 12), next, 9, 0.16, 'sine', 1.5);
+        ch.forEach((s, i) => {
+          tone(hz(s), next + i * 0.06, 9, 0.05, 'triangle', 1.8);
+          tone(hz(s) * 1.003, next + i * 0.06, 9, 0.04, 'sine', 2.2);
+        });
+        for (let k = 0; k < 4; k++) if (Math.random() < 0.55) {
+          tone(hz(12 + PENTA[Math.floor(Math.random() * PENTA.length)]), next + 0.5 + Math.random() * 7, 2.5, 0.06, 'sine', 0.01);
+        }
+      }
+      next += 8; ci++;
+    }
+  }, 400);
+}
+
+function chime() {
+  if (!AC) return;
+  const t = AC.currentTime + 0.05;
+  [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tone(hz(s + 12), t + i * 0.13, 2.8, 0.12, 'sine', 0.005, chimeGain));
+}
+
+function applySound() {
+  if (!AC) return;
+  const now = AC.currentTime;
+  rainGain.gain.setTargetAtTime(settings.rain ? 0.55 : 0, now, 0.4);
+  musicGain.gain.setTargetAtTime(settings.music ? 0.32 : 0, now, 0.4);
+  master.gain.setTargetAtTime(muted ? 0 : settings.vol, now, 0.1);
+}
+
+// ---------- timer ----------
+function start() {
+  ensureAudio();
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  if (S.mode === 'focus' && !S.pending) S.pending = newPlant();
+  S.endAt = Date.now() + S.remaining; S.running = true; saveState(); renderUI();
+}
+function pause() { S.remaining = remaining(); S.running = false; saveState(); renderUI(); }
+function reset() { S.running = false; S.remaining = dur(S.mode); S.pending = null; saveState(); renderUI(); }
+function setMode(m) { S.mode = m; reset(); }
+function complete(skipped) {
+  S.running = false;
+  let next;
+  if (S.mode === 'focus') {
+    if (!skipped) {
+      const p = Object.assign({}, S.pending || newPlant(), { t: Date.now(), mins: settings.focus, task: S.task.trim() });
+      garden.push(p); saveGarden(); S.count++;
+      toast(`🌸 A new flower bloomed${p.task ? `<br><small>for “${escapeHtml(p.task)}”</small>` : ''}`);
+      notify('Focus session complete', 'A new flower bloomed. Time for a break.');
+      chime();
+    }
+    next = S.count > 0 && S.count % 4 === 0 && !skipped ? 'long' : 'short';
+  } else {
+    next = 'focus';
+    if (!skipped) { notify('Break is over', 'Ready to grow another one?'); chime(); }
+  }
+  S.mode = next; S.remaining = dur(next); S.pending = null; saveState(); renderUI();
+}
+function notify(title, body) {
+  try { if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification(title, { body }); } catch {}
+}
+const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let toastT;
+function toast(html) { const el = $('#toast'); el.innerHTML = html; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 3200); }
+
+// ---------- UI ----------
+function dayKey(t) { const d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function renderStats() {
+  const today = dayKey(Date.now());
+  const days = new Set(garden.map(p => dayKey(p.t)));
+  let streak = 0; const d = new Date();
+  if (!days.has(today)) d.setDate(d.getDate() - 1);
+  while (days.has(dayKey(d))) { streak++; d.setDate(d.getDate() - 1); }
+  const mins = garden.reduce((a, p) => a + (p.mins || 0), 0);
+  const nToday = garden.filter(p => dayKey(p.t) === today).length;
+  $('#stats').textContent = `🌱 ${nToday} today · 🔥 ${streak}-day streak · 🌼 ${garden.length} flowers · ⏳ ${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+function renderUI() {
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.mode === S.mode));
+  $('#go').textContent = S.running ? 'Pause' : (S.remaining < dur(S.mode) ? 'Resume' : 'Start');
+  $('#rainT').classList.toggle('on', settings.rain);
+  $('#musicT').classList.toggle('on', settings.music);
+  [...$('#dots').children].forEach((d, i) => d.classList.toggle('on', i < (S.count % 4 || (S.count && S.mode === 'long' ? 4 : 0))));
+  renderStats();
+}
+
+document.querySelectorAll('.chip').forEach(c => c.onclick = () => setMode(c.dataset.mode));
+$('#go').onclick = () => S.running ? pause() : start();
+$('#reset').onclick = reset;
+$('#skip').onclick = () => complete(true);
+$('#rainT').onclick = () => { settings.rain = !settings.rain; ensureAudio(); applySound(); saveSettings(); renderUI(); };
+$('#musicT').onclick = () => { settings.music = !settings.music; ensureAudio(); applySound(); saveSettings(); renderUI(); };
+$('#vol').value = settings.vol;
+$('#vol').oninput = e => { settings.vol = +e.target.value; muted = false; applySound(); saveSettings(); };
+$('#gear').onclick = () => $('#settings').classList.toggle('open');
+$('#task').value = S.task;
+$('#task').oninput = e => { S.task = e.target.value; saveState(); };
+[['#sFocus', 'focus'], ['#sShort', 'short'], ['#sLong', 'long']].forEach(([sel, k]) => {
+  const el = $(sel); el.value = settings[k];
+  el.onchange = () => {
+    const wasFull = !S.running && S.remaining === dur(k);
+    settings[k] = clamp(Math.round(+el.value) || 1, 1, 180); el.value = settings[k]; saveSettings();
+    if (S.mode === k && wasFull) { S.remaining = dur(k); saveState(); }
+    renderUI();
+  };
+});
+let clearArmed = false;
+$('#clear').onclick = () => {
+  if (!clearArmed) { clearArmed = true; $('#clear').textContent = 'Really? Click again'; setTimeout(() => { clearArmed = false; $('#clear').textContent = 'Clear garden'; }, 3000); return; }
+  garden = []; saveGarden(); clearArmed = false; $('#clear').textContent = 'Clear garden'; renderUI();
+};
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') { if (e.key === 'Enter') e.target.blur(); return; }
+  if (e.code === 'Space') { e.preventDefault(); S.running ? pause() : start(); }
+  else if (e.key === 'r' || e.key === 'R') reset();
+  else if (e.key === 'm' || e.key === 'M') { ensureAudio(); muted = !muted; applySound(); toast(muted ? '🔇 Muted' : '🔊 Sound on'); }
+});
+
+// ---------- scene ----------
+const cv = $('#c'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() { DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+addEventListener('resize', resize); resize();
+const groundTop = () => H * 0.70;
+
+const SKY = [[0, '#060a1c', '#141d3d'], [5, '#0c1332', '#382c58'], [6.5, '#45528c', '#f3a77a'], [8, '#5aa6d6', '#c3e5f1'], [16.5, '#4f9bd0', '#d2e8ef'], [18.6, '#3a3d78', '#f28c64'], [20, '#121838', '#372b58'], [24, '#060a1c', '#141d3d']];
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, t) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`; };
+function skyAt(h) {
+  for (let i = 0; i < SKY.length - 1; i++) {
+    const [h0, t0, b0] = SKY[i], [h1, t1, b1] = SKY[i + 1];
+    if (h >= h0 && h <= h1) { const t = (h - h0) / (h1 - h0); return [mix(t0, t1, t), mix(b0, b1, t)]; }
+  }
+  return [SKY[0][1], SKY[0][2]];
+}
+const daynessAt = h => clamp(Math.min((h - 5.5) / 2.5, (20 - h) / 2));
+
+const stars = Array.from({ length: 140 }, () => ({ x: Math.random(), y: Math.random() * 0.65, r: Math.random() * 1.3 + 0.3, p: Math.random() * 6.28 }));
+const flies = Array.from({ length: 28 }, () => ({ x: Math.random(), y: 0.55 + Math.random() * 0.4, p: Math.random() * 100, s: 0.5 + Math.random() }));
+const drops = Array.from({ length: 160 }, () => ({ x: Math.random(), y: Math.random(), v: 0.9 + Math.random() * 0.6, l: 8 + Math.random() * 14 }));
+
+const geomCache = new Map();
+function geom(p) {
+  let g = geomCache.get(p.seed);
+  if (g) return g;
+  const r = mulberry32(p.seed);
+  g = { h: 55 + r() * 100, lean: (r() - 0.5) * 0.5, hue: r() * 360, kind: Math.floor(r() * 5), petals: 5 + Math.floor(r() * 8), size: 9 + r() * 9, stemHue: 95 + r() * 40, phase: r() * 6.28, leaves: [] };
+  const n = 1 + Math.floor(r() * 3);
+  for (let i = 0; i < n; i++) g.leaves.push({ at: 0.15 + r() * 0.55, side: r() < 0.5 ? -1 : 1, len: 10 + r() * 14 });
+  geomCache.set(p.seed, g); return g;
+}
+
+const hitboxes = [];
+function drawPlant(p, grow, t, day, wind, glow) {
+  const G = geom(p), gt = groundTop();
+  const sc = (0.55 + 0.65 * p.d) * clamp(H / 820, 0.7, 1.4);
+  const bx = p.x * W, by = gt + (H - gt) * (0.1 + p.d * 0.8);
+  const h = G.h * sc * Math.min(1, grow / 0.75);
+  const sway = Math.sin(t / 1500 + G.phase) * 0.05 + wind;
+  const tx = bx + (G.lean + sway) * h, ty = by - h;
+  const cx = bx + G.lean * 0.2 * h, cy = by - h * 0.55;
+  const lit = 0.5 + 0.5 * day, depthL = 0.75 + 0.25 * p.d;
+
+  if (glow) {
+    const gr = ctx.createRadialGradient(bx, by - h / 2, 0, bx, by - h / 2, 60 * sc + h / 2);
+    gr.addColorStop(0, 'rgba(255,220,140,0.28)'); gr.addColorStop(1, 'rgba(255,220,140,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(bx, by - h / 2, 60 * sc + h / 2, 0, 7); ctx.fill();
+    return;
+  }
+
+  const stem = `hsl(${G.stemHue},45%,${(20 + 14 * p.d) * lit * 1.3}%)`;
+  ctx.strokeStyle = stem; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1.2, 2.6 * sc);
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(cx, cy, tx, ty); ctx.stroke();
+
+  ctx.fillStyle = stem;
+  for (const lf of G.leaves) {
+    const lg = clamp((grow - lf.at * 0.75) / 0.15); if (lg <= 0) continue;
+    const s = lf.at, qx = (1 - s) ** 2 * bx + 2 * (1 - s) * s * cx + s * s * tx, qy = (1 - s) ** 2 * by + 2 * (1 - s) * s * cy + s * s * ty;
+    const L = lf.len * sc * lg;
+    ctx.save(); ctx.translate(qx, qy); ctx.rotate((lf.side > 0 ? -0.55 : Math.PI + 0.55) + sway);
+    ctx.beginPath(); ctx.ellipse(L / 2, 0, L / 2, L / 5, 0, 0, 7); ctx.fill(); ctx.restore();
+  }
+
+  const b = clamp((grow - 0.7) / 0.3);
+  if (grow > 0.5 && b < 0.35) {
+    ctx.fillStyle = `hsl(${(G.stemHue + G.hue) / 2},40%,${35 * lit * depthL}%)`;
+    ctx.beginPath(); ctx.ellipse(tx, ty, 3 * sc, 5 * sc, sway, 0, 7); ctx.fill();
+  }
+  if (b > 0) {
+    const s = G.size * sc * easeOutBack(b);
+    const petal = `hsl(${G.hue},72%,${64 * lit * depthL + 6}%)`;
+    const petal2 = `hsl(${G.hue + 18},80%,${74 * lit * depthL + 6}%)`;
+    const center = `hsl(${(G.hue + 50) % 360},85%,${52 * lit + 4}%)`;
+    ctx.save(); ctx.translate(tx, ty); ctx.rotate(sway * 2 + G.phase * 0.2);
+    switch (G.kind) {
+      case 0: // daisy
+        ctx.fillStyle = petal;
+        for (let i = 0; i < G.petals; i++) { ctx.save(); ctx.rotate(i / G.petals * 6.283); ctx.beginPath(); ctx.ellipse(s * 0.75, 0, s * 0.6, s * 0.22, 0, 0, 7); ctx.fill(); ctx.restore(); }
+        ctx.fillStyle = center; ctx.beginPath(); ctx.arc(0, 0, s * 0.38, 0, 7); ctx.fill(); break;
+      case 1: // tulip
+        ctx.rotate(-sway * 2 - G.phase * 0.2);
+        ctx.fillStyle = petal; ctx.beginPath();
+        ctx.moveTo(-s * 0.7, -s * 0.9); ctx.lineTo(-s * 0.25, -s * 0.4); ctx.lineTo(0, -s * 1.0); ctx.lineTo(s * 0.25, -s * 0.4); ctx.lineTo(s * 0.7, -s * 0.9);
+        ctx.quadraticCurveTo(s * 0.85, s * 0.3, 0, s * 0.25); ctx.quadraticCurveTo(-s * 0.85, s * 0.3, -s * 0.7, -s * 0.9); ctx.fill();
+        ctx.fillStyle = petal2; ctx.beginPath(); ctx.ellipse(0, -s * 0.15, s * 0.22, s * 0.5, 0, 0, 7); ctx.fill(); break;
+      case 2: // cluster
+        for (let i = 0; i < 9; i++) { const a = i / 9 * 6.283, rr = i % 2 ? s * 0.62 : s * 0.5; ctx.fillStyle = i % 2 ? petal : petal2; ctx.beginPath(); ctx.arc(Math.cos(a) * rr, Math.sin(a) * rr, s * 0.36, 0, 7); ctx.fill(); }
+        ctx.fillStyle = petal2; ctx.beginPath(); ctx.arc(0, 0, s * 0.4, 0, 7); ctx.fill(); break;
+      case 3: // star lily
+        ctx.fillStyle = petal;
+        const n = 5 + (G.petals % 2);
+        for (let i = 0; i < n; i++) { ctx.save(); ctx.rotate(i / n * 6.283); ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(s * 0.5, s * 0.35, s * 1.25, 0); ctx.quadraticCurveTo(s * 0.5, -s * 0.35, 0, 0); ctx.fill(); ctx.restore(); }
+        ctx.fillStyle = center; for (let i = 0; i < n; i++) { const a = i / n * 6.283 + 0.3; ctx.beginPath(); ctx.arc(Math.cos(a) * s * 0.35, Math.sin(a) * s * 0.35, s * 0.08, 0, 7); ctx.fill(); }
+        break;
+      default: // pom / dandelion
+        ctx.strokeStyle = petal; ctx.lineWidth = Math.max(1, s * 0.08);
+        for (let i = 0; i < 22; i++) { const a = i / 22 * 6.283; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * s, Math.sin(a) * s); ctx.stroke(); }
+        ctx.fillStyle = petal2; for (let i = 0; i < 22; i++) { const a = i / 22 * 6.283; ctx.beginPath(); ctx.arc(Math.cos(a) * s, Math.sin(a) * s, s * 0.12, 0, 7); ctx.fill(); }
+        ctx.fillStyle = center; ctx.beginPath(); ctx.arc(0, 0, s * 0.25, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
+  if (p.t) hitboxes.push({ p, x: tx, y: ty, bx, by });
+}
+
+function hillY(x, layer) {
+  const base = groundTop() - [70, 40, 10][layer];
+  return base + Math.sin(x * 0.004 + layer * 2) * [28, 20, 10][layer] + Math.sin(x * 0.011 + layer) * [12, 9, 6][layer];
+}
+
+function frame(now) {
+  const t = performance.now();
+  const d = new Date(), hour = d.getHours() + d.getMinutes() / 60;
+  const day = daynessAt(hour);
+  const [top, bot] = skyAt(hour);
+
+  // sky
+  const g = ctx.createLinearGradient(0, 0, 0, groundTop());
+  g.addColorStop(0, top); g.addColorStop(1, bot);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  // stars
+  if (day < 1) for (const s of stars) {
+    ctx.globalAlpha = (1 - day) * (0.5 + 0.5 * Math.sin(t / 900 + s.p));
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // sun & moon
+  const body = (h, isSun) => {
+    const k = ((h - 6 + 24) % 24) / 12; if (k > 1) return;
+    const x = W * (0.08 + 0.84 * k), y = groundTop() - Math.sin(Math.PI * k) * groundTop() * 0.8 + 20;
+    const R = isSun ? 26 : 20;
+    const gl = ctx.createRadialGradient(x, y, 0, x, y, R * 5);
+    gl.addColorStop(0, isSun ? 'rgba(255,230,160,.55)' : 'rgba(220,230,255,.30)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, R * 5, 0, 7); ctx.fill();
+    ctx.fillStyle = isSun ? '#fff1c4' : '#eef1ff'; ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fill();
+    if (!isSun) { ctx.fillStyle = top; ctx.beginPath(); ctx.arc(x + 9, y - 5, R * 0.9, 0, 7); ctx.fill(); }
+  };
+  body(hour, true); body((hour + 12) % 24, false);
+
+  // hills
+  const hl = [[150, 22, 14], [140, 30, 20], [120, 38, 26]];
+  for (let L = 0; L < 3; L++) {
+    const [hh, sat, lig] = hl[L];
+    ctx.fillStyle = `hsl(${hh},${sat}%,${lig * (0.4 + 0.75 * day) + 3}%)`;
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (let x = 0; x <= W + 10; x += 10) ctx.lineTo(x, hillY(x, L));
+    ctx.lineTo(W, H); ctx.fill();
+  }
+  const gg = ctx.createLinearGradient(0, groundTop(), 0, H);
+  gg.addColorStop(0, `hsl(105,35%,${26 * (0.4 + 0.75 * day) + 3}%)`); gg.addColorStop(1, `hsl(110,40%,${14 * (0.4 + 0.75 * day) + 2}%)`);
+  ctx.fillStyle = gg; ctx.fillRect(0, groundTop() + 4, W, H);
+
+  // plants (far to near), with the growing sprout slotted in by depth
+  hitboxes.length = 0;
+  const wind = Math.sin(t / 5000) * 0.03;
+  const list = garden.map(p => ({ p, grow: 1 }));
+  if (S.mode === 'focus' && S.pending) list.push({ p: S.pending, grow: Math.max(0.04, 1 - remaining() / dur('focus')), pending: true });
+  list.sort((a, b) => a.p.d - b.p.d);
+  for (const it of list) {
+    if (it.pending) drawPlant(it.p, it.grow, t, day, wind, true);
+    drawPlant(it.p, it.grow, t, day, wind, false);
+  }
+
+  // fireflies
+  const fa = (1 - day) * 0.9 + (S.mode !== 'focus' ? 0.25 : 0);
+  if (fa > 0.02) for (const f of flies) {
+    f.p += 0.004 * f.s;
+    const x = (f.x + Math.sin(f.p * 1.3) * 0.05) * W, y = (f.y + Math.cos(f.p) * 0.03) * H;
+    const a = fa * (0.4 + 0.6 * Math.max(0, Math.sin(t / 600 * f.s + f.p * 7)));
+    ctx.fillStyle = `rgba(255,236,140,${a})`; ctx.shadowColor = '#ffe680'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(x, y, 1.8, 0, 7); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+
+  // rain
+  if (settings.rain) {
+    ctx.fillStyle = 'rgba(20,30,60,0.12)'; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(200,215,255,0.28)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const r of drops) {
+      r.y += r.v * 0.012; if (r.y > 1) { r.y = -0.05; r.x = Math.random(); }
+      const x = r.x * W, y = r.y * H; ctx.moveTo(x, y); ctx.lineTo(x - r.l * 0.15, y + r.l);
+    }
+    ctx.stroke();
+  }
+
+  // timer tick
+  if (S.running && remaining() <= 0) complete(false);
+  const rem = remaining();
+  $('#time').textContent = fmt(rem);
+  document.title = S.running ? `${fmt(rem)} · ${S.mode === 'focus' ? 'Focus' : 'Break'} — Focus Garden` : 'Focus Garden';
+  requestAnimationFrame(frame);
+}
+
+// tooltip
+cv.addEventListener('mousemove', e => {
+  let best = null, bd = 24;
+  for (const h of hitboxes) { const dd = Math.hypot(e.clientX - h.x, e.clientY - h.y); if (dd < bd) { bd = dd; best = h; } }
+  const tip = $('#tip');
+  if (!best) { tip.style.display = 'none'; return; }
+  const p = best.p, dt = new Date(p.t);
+  tip.innerHTML = `${dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · ${p.mins}m${p.task ? `<br>“${escapeHtml(p.task)}”` : ''}`;
+  tip.style.left = best.x + 'px'; tip.style.top = (best.y - 10) + 'px'; tip.style.display = 'block';
+});
+cv.addEventListener('mouseleave', () => $('#tip').style.display = 'none');
+
+renderUI();
+setInterval(renderStats, 60000);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
